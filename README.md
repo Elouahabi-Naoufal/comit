@@ -264,9 +264,17 @@ This tool was created because developers spend too much time typing repetitive G
 
 Instead of memorizing dozens of Git command combinations, you learn one simple command with intuitive options. The tool handles the complexity while you focus on your code.
 
+## About This Project
+
+I created this tool because I was tired of typing the same Git commands over and over again. As a developer, I found myself constantly running `git add .`, `git commit -m "message"`, and `git push` multiple times a day. I wanted something simpler and faster.
+
+After using this utility daily and seeing how much time it saves, I decided to share it on GitHub for other developers who might be facing the same repetitive workflow issues. Whether you're a beginner who finds Git intimidating or an experienced developer who wants to speed up your workflow, this tool can help.
+
 ## Contributing
 
-Feel free to suggest improvements or report issues. The tool is designed to be simple and reliable, covering the most common Git workflows that developers use daily.
+Feel free to suggest improvements, report issues, or contribute new features. The tool is designed to be simple and reliable, covering the most common Git workflows that developers use daily.
+
+If you have questions, suggestions, or just want to share how you're using `comit`, feel free to reach out through GitHub issues or discussions. I'm always happy to hear from fellow developers and improve this tool based on real-world usage.
 
 ## License
 
