@@ -810,6 +810,357 @@ case "$OPTION" in
         fi
         exit 0
         ;;
+    "install-man")
+        log_info "Installing comprehensive man page for comit..."
+        
+        # Create comprehensive man page content
+        MAN_CONTENT=$(cat << 'EOF'
+.TH COMIT 1 "2024" "Git Shortcut Utility v5.0" "User Commands"
+.SH NAME
+comit \- Professional Git shortcut utility to replace complex multi-step Git workflows
+
+.SH SYNOPSIS
+.B comit
+[\fIOPTION\fR] [\fIMESSAGE\fR|\fITARGET\fR]
+.br
+.B comit
+\fB\-\-setup\fR
+.br
+.B comit
+\fB\-\-help\fR
+.br
+.B comit
+\fB\-\-version\fR
+
+.SH DESCRIPTION
+.B comit
+is a professional Git shortcut utility that replaces complex multi-step Git workflows with simple, memorable commands. Instead of typing multiple Git commands like \fBgit add .\fR, \fBgit commit -m "message"\fR, and \fBgit push\fR, you can accomplish the same task with a single \fBcomit "message"\fR command.
+.PP
+The utility provides over 40 Git operations through intuitive options, making Git workflows faster and more efficient for daily development tasks. It includes safety features like confirmation prompts for destructive operations, automatic repository checks, and colored output for better user experience.
+.PP
+Whether you\'re a beginner who finds Git intimidating or an experienced developer who wants to speed up your workflow, this tool streamlines common Git operations while maintaining full control over your repository.
+
+.SH SETUP & CONFIGURATION
+.TP
+.B \-\-setup
+Run the comprehensive first-time setup wizard. This interactive command configures your Git username, email, default branch settings, and optionally saves a GitHub personal access token for enhanced features. The wizard also sets up optimal Git defaults including pull.rebase=false and core.autocrlf=input.
+.TP
+.B \-\-config
+Display current Git configuration including global and local user settings, remote repositories, current branch, and token status. Optionally launch the setup wizard to modify settings.
+.TP
+.B \-\-save\-token
+Securely save a GitHub personal access token for future use with private repositories and enhanced GitHub integration features. The token is stored with restricted permissions (600) in ~/.comit/token.
+.TP
+.B \-\-ssh
+Generate an ED25519 SSH key for GitHub authentication and display setup instructions. If a key already exists, it shows the public key for copying to GitHub. Automatically starts ssh-agent and adds the key.
+.TP
+.B \-\-clone \fIURL\fR
+Clone a repository from the specified URL and automatically set up the local workspace. Changes to the cloned directory and displays the current path.
+.TP
+.B \-\-install\-man
+Install the comprehensive man page for the comit command. Attempts system-wide installation first, falls back to user directory if sudo access is unavailable.
+.TP
+.B \-\-init
+Initialize a new Git repository with interactive branch name selection and optional remote URL configuration. Handles existing repositories gracefully.
+.TP
+.B \-t, \-\-token
+Interactive repository initialization with GitHub integration. Prompts for GitHub username, repository name, and uses saved token or requests new one. Creates initial commit and pushes to GitHub.
+
+.SH BASIC COMMITS
+.TP
+.B comit "\fImessage\fR"
+Standard workflow equivalent to: \fBgit add . && git commit -m "message" && git push\fR. This is the most commonly used command that stages all changes, commits with the provided message, and pushes to the current branch.
+.TP
+.B \-n, \-\-no\-push "\fImessage\fR"
+Commit changes without pushing to remote repository. Equivalent to: \fBgit add . && git commit -m "message"\fR. Useful for local commits before pushing.
+.TP
+.B \-f, \-\-force "\fImessage\fR"
+Commit and force push changes. Equivalent to: \fBgit add . && git commit -m "message" && git push -f\fR. Includes confirmation prompt for safety.
+.TP
+.B \-a, \-\-amend "\fImessage\fR"
+Amend the last commit with new message or additional changes. If message is provided, updates commit message. Offers option to force push amended commit.
+.TP
+.B \-\-fixup \fICOMMIT\fR "\fImessage\fR"
+Create a fixup commit for the specified commit hash. Useful for preparing commits for interactive rebase with autosquash.
+.TP
+.B \-\-wip "\fImessage\fR"
+Create a work-in-progress commit. Equivalent to: \fBgit add . && git commit -m "WIP: message"\fR. Perfect for saving work without a formal commit message.
+
+.SH BRANCH OPERATIONS
+.TP
+.B \-b, \-\-branch \fINAME\fR "\fImessage\fR"
+Create new branch and commit changes. Equivalent to: \fBgit checkout -b NAME && git add . && git commit -m "message"\fR. Streamlines feature branch creation.
+.TP
+.B \-c, \-\-checkout \fIBRANCH\fR
+Switch to specified branch. Equivalent to: \fBgit checkout BRANCH\fR. Provides interactive prompt if branch name not specified.
+.TP
+.B \-\-merge \fIBRANCH\fR
+Merge specified branch into current branch. Equivalent to: \fBgit merge BRANCH\fR. Shows which branches are being merged.
+.TP
+.B \-\-delete \fIBRANCH\fR
+Safely delete specified branch with confirmation prompt. Equivalent to: \fBgit branch -d BRANCH\fR. Prevents deletion of current branch.
+.TP
+.B \-\-new\-feature \fINAME\fR "\fImessage\fR"
+Create feature branch with "feature/" prefix, commit changes, and push with upstream tracking. Comprehensive feature branch workflow.
+
+.SH WORKFLOW SHORTCUTS
+.TP
+.B \-p, \-\-pull
+Pull latest changes from origin for current branch. Equivalent to: \fBgit pull origin current-branch\fR. Shows success/failure status.
+.TP
+.B \-\-sync
+Synchronize with remote repository. Equivalent to: \fBgit pull && git push\fR. Ensures local and remote are in sync.
+.TP
+.B \-\-stash "\fImessage\fR"
+Stash changes with descriptive message. Equivalent to: \fBgit stash push -m "message"\fR. Uses timestamp if no message provided.
+.TP
+.B \-\-unstash
+Apply and remove the most recent stash. Equivalent to: \fBgit stash pop\fR. Warns if no stashes exist.
+.TP
+.B \-\-save "\fImessage\fR"
+Quick save changes to stash. Equivalent to: \fBgit add . && git stash push -m "message"\fR. Perfect for temporary work saving.
+.TP
+.B \-\-oops
+Undo last commit while keeping changes in working directory. Equivalent to: \fBgit reset --soft HEAD~1\fR. Safe way to fix recent commits.
+.TP
+.B \-\-undo
+Alias for --oops. Same functionality with alternative command name.
+
+.SH ADVANCED OPERATIONS
+.TP
+.B \-\-squash \fIN\fR
+Start interactive rebase to squash last N commits. Equivalent to: \fBgit rebase -i HEAD~N\fR. Validates N is a positive integer.
+.TP
+.B \-\-clean
+Clean workspace by removing all uncommitted changes and untracked files. Equivalent to: \fBgit reset --hard HEAD && git clean -fd\fR. Requires confirmation for safety.
+.TP
+.B \-\-reset
+Interactive reset to specific commit or branch. Prompts for target and performs: \fBgit reset --hard target && git clean -fd\fR.
+.TP
+.B \-\-hard\-reset \fIBRANCH\fR
+Hard reset to specified branch and clean workspace. Equivalent to: \fBgit reset --hard BRANCH && git clean -fd\fR. Requires confirmation due to destructive nature.
+.TP
+.B \-\-sync\-fork
+Synchronize forked repository with upstream. Equivalent to: \fBgit fetch upstream && git checkout main && git merge upstream/main && git push origin main\fR.
+.TP
+.B \-\-hotfix "\fImessage\fR"
+Create timestamped hotfix branch from main. Switches to main, pulls latest, creates hotfix/YYYYMMDD-HHMM branch, and optionally commits changes.
+.TP
+.B \-\-release \fITAG\fR
+Create annotated release tag and push to remote. Equivalent to: \fBgit tag -a TAG -m "Release TAG" && git push origin TAG\fR.
+
+.SH INFORMATION & STATUS
+.TP
+.B \-s, \-\-status
+Show short repository status. Equivalent to: \fBgit status --short\fR. Concise view of working directory state.
+.TP
+.B \-l, \-\-log
+Show recent commits in one line format. Equivalent to: \fBgit log --oneline\fR. Quick commit history overview.
+.TP
+.B \-\-diff
+Show changes in working directory. Equivalent to: \fBgit diff\fR. Displays unstaged changes.
+.TP
+.B \-\-tree
+Visual commit tree showing branch relationships. Equivalent to: \fBgit log --graph --oneline --all -15\fR. Limited to 15 commits for readability.
+.TP
+.B \-\-who
+Show contributor statistics. Equivalent to: \fBgit shortlog -sn\fR. Lists contributors by commit count.
+.TP
+.B \-\-size
+Show repository size and object statistics. Equivalent to: \fBgit count-objects -vH\fR. Displays human-readable size information.
+.TP
+.B \-r, \-\-remote
+Show remote repositories. Equivalent to: \fBgit remote -v\fR. Displays fetch and push URLs for all configured remotes.
+.TP
+.B \-h, \-\-help
+Display comprehensive help message with all available commands, organized by category with practical examples.
+.TP
+.B \-v, \-\-version
+Show version information and repository URL.
+
+.SH EXAMPLES
+.SS Basic Daily Workflow
+.TP
+.B comit "Fix authentication bug"
+Standard commit workflow - stages all changes, commits with message, and pushes to current branch.
+.TP
+.B comit -n "Work in progress"
+Commit changes locally without pushing to remote repository.
+.TP
+.B comit --wip "Testing new feature"
+Create work-in-progress commit with WIP prefix.
+.TP
+.B comit -p
+Pull latest changes from remote repository.
+
+.SS Branch Management
+.TP
+.B comit -b feature/login "Implement user login"
+Create new feature branch and make initial commit.
+.TP
+.B comit -c main
+Switch to main branch.
+.TP
+.B comit --merge feature/login
+Merge feature branch into current branch.
+.TP
+.B comit --delete feature/login
+Safely delete merged feature branch.
+
+.SS Advanced Operations
+.TP
+.B comit --squash 3
+Interactively squash last 3 commits.
+.TP
+.B comit --hotfix "Fix critical security vulnerability"
+Create emergency hotfix branch with timestamp.
+.TP
+.B comit --release v1.2.0
+Create and push release tag.
+.TP
+.B comit --hard-reset main
+Hard reset current branch to main (destructive).
+
+.SS Repository Setup
+.TP
+.B comit --setup
+Run first-time configuration wizard.
+.TP
+.B comit --init
+Initialize new Git repository with branch selection and optional remote.
+.TP
+.B comit --clone https://github.com/user/repo.git
+Clone repository and set up workspace.
+.TP
+.B comit --token
+Initialize repository with GitHub integration.
+
+.SS Information Commands
+.TP
+.B comit -s
+Quick repository status.
+.TP
+.B comit --tree
+Visual commit history.
+.TP
+.B comit --who
+Contributor statistics.
+.TP
+.B comit -r
+Show remote repositories.
+
+.SH CONFIGURATION
+The comit utility stores configuration in \fB~/.comit/\fR directory:
+.TP
+.B ~/.comit/config
+General configuration settings
+.TP
+.B ~/.comit/token
+Securely stored GitHub personal access token (permissions: 600)
+.PP
+Global Git settings configured by --setup:
+.TP
+.B init.defaultBranch
+Set to "main"
+.TP
+.B pull.rebase
+Set to "false"
+.TP
+.B core.autocrlf
+Set to "input"
+
+.SH SAFETY FEATURES
+The comit utility includes several safety mechanisms:
+.TP
+.B Confirmation Prompts
+Destructive operations like --clean, --hard-reset, and --force require user confirmation.
+.TP
+.B Repository Validation
+All commands verify you\'re in a Git repository before executing.
+.TP
+.B Branch Protection
+Prevents deletion of current branch and warns about destructive operations.
+.TP
+.B Error Handling
+Clear error messages with colored output for better visibility.
+.TP
+.B Graceful Fallbacks
+Handles missing remotes, empty repositories, and network issues gracefully.
+
+.SH EXIT STATUS
+.TP
+.B 0
+Successful completion
+.TP
+.B 1
+General error (not in git repository, network failure, etc.)
+
+.SH FILES
+.TP
+.B ~/.comit/config
+User configuration file
+.TP
+.B ~/.comit/token
+Securely stored GitHub token
+.TP
+.B ~/.bashrc, ~/.zshrc
+Shell configuration files (for PATH setup)
+
+.SH ENVIRONMENT
+.TP
+.B PATH
+Must include directory containing comit executable
+.TP
+.B HOME
+Used for configuration directory location
+.TP
+.B MANPATH
+Extended to include comit man page location
+
+.SH BUGS
+Report bugs and feature requests at: https://github.com/Elouahabi-Naoufal/comit/issues
+
+.SH AUTHOR
+Created by a developer frustrated with repetitive Git commands. Shared on GitHub to help fellow developers streamline their workflows.
+
+.SH SEE ALSO
+.BR git (1),
+.BR git-add (1),
+.BR git-commit (1),
+.BR git-push (1),
+.BR git-pull (1),
+.BR git-branch (1),
+.BR git-checkout (1),
+.BR git-merge (1),
+.BR git-stash (1),
+.BR git-reset (1),
+.BR git-rebase (1),
+.BR git-tag (1)
+EOF
+)
+        
+        # Try to install to system location
+        if sudo mkdir -p /usr/local/share/man/man1 2>/dev/null && echo "$MAN_CONTENT" | sudo tee /usr/local/share/man/man1/comit.1 > /dev/null 2>&1; then
+            sudo mandb -q 2>/dev/null || true
+            log_success "Man page installed to /usr/local/share/man/man1/comit.1"
+            echo "You can now use: man comit"
+        else
+            # Fallback to user directory
+            USER_MAN_DIR="$HOME/.local/share/man/man1"
+            mkdir -p "$USER_MAN_DIR"
+            echo "$MAN_CONTENT" > "$USER_MAN_DIR/comit.1"
+            
+            # Add to MANPATH if not already there
+            if ! echo "$MANPATH" | grep -q "$HOME/.local/share/man"; then
+                echo 'export MANPATH="$HOME/.local/share/man:$MANPATH"' >> "$HOME/.bashrc"
+                log_warning "Added MANPATH to ~/.bashrc - restart terminal or run: source ~/.bashrc"
+            fi
+            
+            log_success "Man page installed to $USER_MAN_DIR/comit.1"
+            echo "You can now use: man comit (after restarting terminal)"
+        fi
+        exit 0
+        ;;
 esac
 
 # Get commit message if not provided
