@@ -22,7 +22,9 @@ That's it. The tool handles over 40 different Git workflows, from basic commits 
 
 ## Installation
 
-### Quick Install
+### Linux & macOS
+
+#### Quick Install (Recommended)
 
 1. Download the `comit` file from this repository
 2. Make it executable and move it to your system path:
@@ -38,30 +40,72 @@ sudo mv comit /usr/local/bin/
 comit --setup
 ```
 
-### Manual Install
+#### Manual Install (No sudo required)
 
-If you prefer to install it manually or don't have sudo access:
-
-1. Create a local bin directory if it doesn't exist:
+1. Create a local bin directory:
 
 ```bash
 mkdir -p ~/.local/bin
 ```
 
-2. Copy the comit file there:
+2. Copy and make executable:
 
 ```bash
 cp comit ~/.local/bin/
 chmod +x ~/.local/bin/comit
 ```
 
-3. Add it to your PATH by adding this line to your `~/.bashrc` or `~/.zshrc`:
+3. Add to PATH in your shell profile:
 
+**For Bash** (`~/.bashrc` or `~/.bash_profile`):
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-4. Restart your terminal or run `source ~/.bashrc`
+**For Zsh** (`~/.zshrc`):
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+4. Restart your terminal or run `source ~/.bashrc` (or `source ~/.zshrc`)
+
+### Windows
+
+#### Using WSL (Windows Subsystem for Linux) - Recommended
+
+1. Install WSL2 with Ubuntu from Microsoft Store
+2. Open Ubuntu terminal and follow the Linux installation steps above
+3. Use `comit` from within the WSL environment
+
+#### Using Git Bash
+
+1. Install Git for Windows (includes Git Bash)
+2. Download the `comit` file to a folder like `C:\tools\`
+3. Open Git Bash and navigate to the folder:
+
+```bash
+cd /c/tools/
+chmod +x comit
+```
+
+4. Add to PATH by creating an alias in `~/.bashrc`:
+
+```bash
+echo 'alias comit="/c/tools/comit"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+#### Using PowerShell (Advanced)
+
+1. Install Git for Windows
+2. Create a PowerShell wrapper script `comit.ps1`:
+
+```powershell
+#!/usr/bin/env pwsh
+bash C:\tools\comit $args
+```
+
+3. Add the script location to your PowerShell PATH
 
 ## First Time Setup
 
@@ -173,22 +217,46 @@ man comit
 
 ## Requirements
 
-- Bash shell (Linux, macOS, WSL on Windows)
+### All Platforms
 - Git installed and configured
 - Optional: GitHub account for token features
+
+### Platform-Specific
+- **Linux/macOS**: Bash shell (pre-installed)
+- **Windows**: WSL2, Git Bash, or PowerShell with Git for Windows
 
 ## Troubleshooting
 
 ### Command Not Found
-If you get "command not found", make sure:
-1. The file is executable: `chmod +x /usr/local/bin/comit`
-2. The directory is in your PATH: `echo $PATH`
+
+**Linux/macOS:**
+- Check if file is executable: `chmod +x /usr/local/bin/comit`
+- Verify PATH includes the directory: `echo $PATH`
+
+**Windows (Git Bash):**
+- Ensure the alias is set: `alias comit`
+- Check if Git Bash can find the file: `which comit`
+
+**Windows (WSL):**
+- Follow the Linux troubleshooting steps above
 
 ### Permission Denied
-If you can't install to `/usr/local/bin`, use the manual install method to install in your home directory.
+
+**Linux/macOS:**
+- Use the manual install method to install in your home directory
+- Or use `sudo` if you have administrator access
+
+**Windows:**
+- Run Git Bash or PowerShell as Administrator
+- Or place the file in a user-writable directory
 
 ### Git Errors
-Run `comit --config` to check your Git configuration. Make sure your username and email are set.
+Run `comit --config` to check your Git configuration. Make sure your username and email are set:
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+```
 
 ## Why Use This
 
