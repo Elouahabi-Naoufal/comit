@@ -1,0 +1,958 @@
+#!/bin/bash
+
+# Professional Git commit utility
+# Version: 2.0
+
+set -e  # Exit on any error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Configuration directory
+CONFIG_DIR="$HOME/.comit"
+CONFIG_FILE="$CONFIG_DIR/config"
+TOKEN_FILE="$CONFIG_DIR/token"
+
+# Helper functions
+log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
+log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
+
+# Create config directory if it doesn't exist
+ensure_config_dir() {
+    [[ ! -d "$CONFIG_DIR" ]] && mkdir -p "$CONFIG_DIR"
+}
+
+# Save configuration
+save_config() {
+    ensure_config_dir
+    echo "$1=$2" >> "$CONFIG_FILE"
+}
+
+# Load configuration
+load_config() {
+    [[ -f "$CONFIG_FILE" ]] && source "$CONFIG_FILE"
+}
+
+# Save token securely
+save_token() {
+    ensure_config_dir
+    echo "$1" > "$TOKEN_FILE"
+    chmod 600 "$TOKEN_FILE"
+}
+
+# Load saved token
+load_token() {
+    [[ -f "$TOKEN_FILE" ]] && cat "$TOKEN_FILE"
+}
+
+# First-time setup wizard
+setup_wizard() {
+    echo -e "${BLUE}=== Git Shortcut Utility Setup ===${NC}\n"
+    
+    # Git configuration
+    echo -e "${YELLOW}1. Git Configuration${NC}"
+    CURRENT_NAME=$(git config --global user.name 2>/dev/null)
+    CURRENT_EMAIL=$(git config --global user.email 2>/dev/null)
+    
+    if [[ -z "$CURRENT_NAME" ]]; then
+        echo -n "Enter your full name: "
+        read -r name
+        git config --global user.name "$name"
+        log_success "Name set to: $name"
+    else
+        echo "Current name: $CURRENT_NAME"
+    fi
+    
+    if [[ -z "$CURRENT_EMAIL" ]]; then
+        echo -n "Enter your email: "
+        read -r email
+        git config --global user.email "$email"
+        log_success "Email set to: $email"
+    else
+        echo "Current email: $CURRENT_EMAIL"
+    fi
+    
+    # GitHub token
+    echo -e "\n${YELLOW}2. GitHub Token (Optional)${NC}"
+    echo "For private repos and enhanced features"
+    echo -n "Save GitHub token? (y/N): "
+    read -r save_token_choice
+    if [[ "$save_token_choice" =~ ^[Yy]$ ]]; then
+        echo -n "Enter GitHub token: "
+        read -rs token
+        echo
+        save_token "$token"
+        log_success "Token saved securely"
+    fi
+    
+    # Default settings
+    echo -e "\n${YELLOW}3. Default Settings${NC}"
+    git config --global init.defaultBranch main
+    git config --global pull.rebase false
+    git config --global core.autocrlf input
+    log_success "Default settings configured"
+    
+    echo -e "\n${GREEN}Setup complete! You can now use 'comit' commands.${NC}"
+    echo "Try: comit --help"
+}
+
+check_git_repo() {
+    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+        log_error "Not a git repository. Please run 'git init' first."
+        exit 1
+    fi
+}
+
+get_current_branch() {
+    git branch --show-current 2>/dev/null || echo "main"
+}
+
+show_help() {
+    echo -e "${BLUE}Git Shortcut Utility v4.0${NC} - Replace complex Git commands with simple shortcuts\n"
+    echo -e "${YELLOW}USAGE:${NC} comit [OPTION] [MESSAGE/TARGET]\n"
+    
+    echo -e "${YELLOW}═══ SETUP & CONFIGURATION ═══${NC}"
+    echo "  --setup             Run first-time setup wizard (configure Git user, email, token)"
+    echo "  --config            Show current Git configuration and optionally edit settings"
+    echo "  --save-token        Save GitHub personal access token securely for future use"
+    echo "  --ssh               Generate SSH key for GitHub and show setup instructions"
+    echo "  --clone URL         Clone repository from URL and set up local workspace"
+    echo "  --install-man       Install man page for comit command"
+    echo -e "  -t, --token         Initialize new repository with GitHub token (interactive)\n"
+    
+    echo -e "${YELLOW}═══ BASIC COMMITS ═══${NC}"
+    echo '  comit "message"     Standard workflow: git add . && git commit -m "message" && git push'
+    echo '  -n, --no-push "msg" Commit without pushing: git add . && git commit -m "msg"'
+    echo '  -f, --force "msg"   Force push commit: git add . && git commit -m "msg" && git push -f'
+    echo '  -a, --amend "msg"   Amend last commit: git commit --amend -m "msg"'
+    echo '  --fixup HASH "msg"  Create fixup commit: git commit --fixup=HASH -m "msg"'
+    echo -e '  --wip "msg"         Work-in-progress: git add . && git commit -m "WIP: msg"\n'
+    
+    echo -e "${YELLOW}═══ BRANCH OPERATIONS ═══${NC}"
+    echo '  -b, --branch NAME "msg"  Create new branch and commit: git checkout -b NAME && commit'
+    echo "  -c, --checkout BRANCH    Switch to branch: git checkout BRANCH"
+    echo "  --merge BRANCH           Merge branch into current: git merge BRANCH"
+    echo "  --delete BRANCH          Delete branch safely: git branch -d BRANCH"
+    echo -e '  --new-feature NAME "msg" Create feature branch, commit, and push with upstream\n'
+    
+    echo -e "${YELLOW}═══ WORKFLOW SHORTCUTS ═══${NC}"
+    echo "  -p, --pull          Pull latest changes: git pull origin current-branch"
+    echo "  --sync              Sync with remote: git pull && git push"
+    echo '  --stash "msg"       Stash changes: git stash push -m "msg"'
+    echo "  --unstash           Apply latest stash: git stash pop"
+    echo '  --save "msg"        Quick save to stash: git add . && git stash push -m "msg"'
+    echo "  --oops              Undo last commit (keep changes): git reset --soft HEAD~1"
+    echo -e "  --undo              Same as --oops: git reset --soft HEAD~1\n"
+    
+    echo -e "${YELLOW}═══ ADVANCED OPERATIONS ═══${NC}"
+    echo "  --squash N          Interactive rebase last N commits: git rebase -i HEAD~N"
+    echo "  --clean             Clean workspace: git reset --hard HEAD && git clean -fd"
+    echo "  -r, --reset         Reset to specific commit/branch (interactive)"
+    echo "  --hard-reset BRANCH Hard reset and clean: git reset --hard BRANCH && git clean -fd"
+    echo "  --sync-fork         Sync fork with upstream: fetch upstream && merge upstream/main"
+    echo '  --hotfix "msg"      Create timestamped hotfix branch from main'
+    echo "  --release TAG       Create and push release tag: git tag -a TAG && git push origin TAG"
+    echo -e "  --remote            Show remote repositories: git remote -v\n"
+    
+    echo -e "${YELLOW}═══ INFORMATION & STATUS ═══${NC}"
+    echo "  -s, --status        Short status: git status --short"
+    echo "  -l, --log           Recent commits: git log --oneline"
+    echo "  --diff              Show changes: git diff"
+    echo "  --tree              Visual commit tree: git log --graph --oneline --all -15"
+    echo "  --who               Contributor stats: git shortlog -sn"
+    echo "  --size              Repository size: git count-objects -vH"
+    echo "  -h, --help          Show this help message"
+    echo -e "  -v, --version       Show version information\n"
+    
+    echo -e "${YELLOW}═══ PRACTICAL EXAMPLES ═══${NC}"
+    echo -e "  ${GREEN}Setup and Configuration:${NC}"
+    echo "    comit --setup                           # First-time setup wizard"
+    echo "    comit --save-token                      # Save GitHub token"
+    echo "    comit --ssh                             # Generate SSH key for GitHub"
+    echo -e "    comit --config                          # View/edit configuration\n"
+    
+    echo -e "  ${GREEN}Daily Workflow:${NC}"
+    echo '    comit "Fix authentication bug"          # Standard: add, commit, push'
+    echo '    comit -n "Work in progress"             # Commit without pushing'
+    echo '    comit --wip "Testing new feature"       # Quick WIP commit'
+    echo "    comit -p                                # Pull latest changes"
+    echo -e "    comit --sync                            # Sync with remote\n"
+    
+    echo -e "  ${GREEN}Branch Management:${NC}"
+    echo '    comit -b feature/login "Start login"    # Create branch and commit'
+    echo "    comit -c main                           # Switch to main branch"
+    echo "    comit --merge feature/login             # Merge feature branch"
+    echo -e "    comit --delete feature/login            # Delete merged branch\n"
+    
+    echo -e "  ${GREEN}Advanced Operations:${NC}"
+    echo "    comit --squash 3                        # Squash last 3 commits"
+    echo '    comit --hotfix "Fix critical bug"       # Emergency hotfix workflow'
+    echo "    comit --release v1.2.0                 # Create release tag"
+    echo -e "    comit --hard-reset main                 # Hard reset to main\n"
+    
+    echo -e "  ${GREEN}Repository Setup:${NC}"
+    echo "    comit --clone https://github.com/user/repo  # Clone and setup"
+    echo -e "    comit --token                           # Initialize repo with GitHub\n"
+    
+    echo -e "  ${GREEN}Quick Info:${NC}"
+    echo "    comit -s                                # Quick status"
+    echo "    comit --tree                            # Visual commit history"
+    echo -e "    comit --who                             # See contributors\n"
+    
+    echo -e "${YELLOW}═══ NOTES ═══${NC}"
+    echo "• All commands work from any subdirectory within a Git repository"
+    echo "• Use quotes around commit messages containing spaces or special characters"
+    echo "• Force operations (--force, --hard-reset) require confirmation for safety"
+    echo "• Setup wizard (--setup) configures Git globally for optimal comit usage"
+    echo "• GitHub token enables private repository operations and enhanced features"
+    echo "• Man page available after running: comit --install-man"
+}
+
+show_version() {
+    echo -e "${BLUE}Git Shortcut Utility v4.0${NC}"
+    echo "Replace complex Git commands with simple, memorable shortcuts"
+    echo -e "40+ Git workflows and operations in one command\n"
+    echo "Features:"
+    echo "• Quick commits with automatic add, commit, and push"
+    echo "• Branch management and workflow shortcuts"
+    echo "• GitHub integration with token support"
+    echo "• Advanced Git operations made simple"
+    echo -e "• Comprehensive setup and configuration tools\n"
+    echo "Repository: https://github.com/your-username/comit"
+    echo "Documentation: man comit (after running --install-man)"
+}
+
+# Parse arguments
+OPTION=""
+MESSAGE=""
+TARGET=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -v|--version)
+            show_version
+            exit 0
+            ;;
+        -s|--status)
+            check_git_repo
+            git status --short
+            exit 0
+            ;;
+        -l|--log)
+            check_git_repo
+            git log --oneline
+            exit 0
+            ;;
+        --diff)
+            check_git_repo
+            git diff
+            exit 0
+            ;;
+        -p|--pull)
+            OPTION="pull"
+            shift
+            ;;
+        -n|--no-push)
+            OPTION="no-push"
+            shift
+            ;;
+        -f|--force)
+            OPTION="force"
+            shift
+            ;;
+        -a|--amend)
+            OPTION="amend"
+            shift
+            ;;
+        --fixup)
+            OPTION="fixup"
+            TARGET="$2"
+            shift 2
+            ;;
+        -b|--branch)
+            OPTION="branch"
+            TARGET="$2"
+            shift 2
+            ;;
+        -c|--checkout)
+            OPTION="checkout"
+            TARGET="$2"
+            shift 2
+            ;;
+        --merge)
+            OPTION="merge"
+            TARGET="$2"
+            shift 2
+            ;;
+        --delete)
+            OPTION="delete"
+            TARGET="$2"
+            shift 2
+            ;;
+        --stash)
+            OPTION="stash"
+            shift
+            ;;
+        --unstash)
+            OPTION="unstash"
+            shift
+            ;;
+        --undo)
+            OPTION="undo"
+            shift
+            ;;
+        -r|--reset)
+            OPTION="reset"
+            shift
+            ;;
+        --hard-reset)
+            OPTION="hard-reset"
+            TARGET="$2"
+            shift 2
+            ;;
+        --config)
+            OPTION="config"
+            shift
+            ;;
+        --remote)
+            OPTION="remote"
+            shift
+            ;;
+        --sync)
+            OPTION="sync"
+            shift
+            ;;
+        --save)
+            OPTION="save"
+            shift
+            ;;
+        --wip)
+            OPTION="wip"
+            shift
+            ;;
+        --oops)
+            OPTION="oops"
+            shift
+            ;;
+        --squash)
+            OPTION="squash"
+            TARGET="$2"
+            shift 2
+            ;;
+        --clean)
+            OPTION="clean"
+            shift
+            ;;
+        --sync-fork)
+            OPTION="sync-fork"
+            shift
+            ;;
+        --new-feature)
+            OPTION="new-feature"
+            TARGET="$2"
+            shift 2
+            ;;
+        --hotfix)
+            OPTION="hotfix"
+            shift
+            ;;
+        --release)
+            OPTION="release"
+            TARGET="$2"
+            shift 2
+            ;;
+        --tree)
+            check_git_repo
+            git log --graph --oneline --all -15
+            exit 0
+            ;;
+        --who)
+            check_git_repo
+            git shortlog -sn
+            exit 0
+            ;;
+        --size)
+            check_git_repo
+            git count-objects -vH
+            exit 0
+            ;;
+        --setup)
+            setup_wizard
+            exit 0
+            ;;
+        --save-token)
+            echo -n "Enter GitHub token: "
+            read -rs token
+            echo
+            save_token "$token"
+            log_success "Token saved securely"
+            exit 0
+            ;;
+        --ssh)
+            OPTION="ssh"
+            shift
+            ;;
+        --clone)
+            OPTION="clone"
+            TARGET="$2"
+            shift 2
+            ;;
+        --install-man)
+            OPTION="install-man"
+            shift
+            ;;
+        -t|--token)
+            OPTION="token"
+            shift
+            ;;
+        -*)
+            log_error "Unknown option: $1"
+            echo "Use 'comit --help' for usage information."
+            exit 1
+            ;;
+        *)
+            MESSAGE="$1"
+            shift
+            ;;
+    esac
+done
+
+# Handle various options
+case "$OPTION" in
+    "pull")
+        check_git_repo
+        BRANCH=$(get_current_branch)
+        log_info "Pulling latest changes from origin/$BRANCH..."
+        if git pull origin "$BRANCH"; then
+            log_success "Successfully pulled latest changes"
+        else
+            log_error "Failed to pull changes"
+            exit 1
+        fi
+        exit 0
+        ;;
+    "branch")
+        check_git_repo
+        if [[ -z "$TARGET" ]]; then
+            echo -n "Enter new branch name: "
+            read -r TARGET
+        fi
+        if [[ -z "$TARGET" ]]; then
+            log_error "Branch name cannot be empty"
+            exit 1
+        fi
+        log_info "Creating and switching to branch: $TARGET"
+        git checkout -b "$TARGET"
+        log_success "Created and switched to branch: $TARGET"
+        exit 0
+        ;;
+    "checkout")
+        check_git_repo
+        if [[ -z "$TARGET" ]]; then
+            echo -n "Enter branch name to checkout: "
+            read -r TARGET
+        fi
+        if [[ -z "$TARGET" ]]; then
+            log_error "Branch name cannot be empty"
+            exit 1
+        fi
+        log_info "Switching to branch: $TARGET"
+        git checkout "$TARGET"
+        log_success "Switched to branch: $TARGET"
+        exit 0
+        ;;
+    "merge")
+        check_git_repo
+        if [[ -z "$TARGET" ]]; then
+            echo -n "Enter branch to merge: "
+            read -r TARGET
+        fi
+        CURRENT=$(get_current_branch)
+        log_info "Merging $TARGET into $CURRENT..."
+        git merge "$TARGET"
+        log_success "Merged $TARGET into $CURRENT"
+        exit 0
+        ;;
+    "delete")
+        check_git_repo
+        if [[ -z "$TARGET" ]]; then
+            echo -n "Enter branch to delete: "
+            read -r TARGET
+        fi
+        CURRENT=$(get_current_branch)
+        if [[ "$TARGET" == "$CURRENT" ]]; then
+            log_error "Cannot delete current branch. Switch to another branch first."
+            exit 1
+        fi
+        echo -n "Delete branch '$TARGET'? (y/N): "
+        read -r confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            git branch -d "$TARGET"
+            log_success "Deleted branch: $TARGET"
+        fi
+        exit 0
+        ;;
+    "stash")
+        check_git_repo
+        if git diff --quiet && git diff --cached --quiet; then
+            log_warning "No changes to stash"
+        else
+            git stash push -m "${MESSAGE:-Auto-stash $(date)}"
+            log_success "Changes stashed"
+        fi
+        exit 0
+        ;;
+    "unstash")
+        check_git_repo
+        if git stash list | grep -q stash; then
+            git stash pop
+            log_success "Stash applied"
+        else
+            log_warning "No stashes found"
+        fi
+        exit 0
+        ;;
+    "undo")
+        check_git_repo
+        log_warning "Undoing last commit (keeping changes)..."
+        git reset --soft HEAD~1
+        log_success "Last commit undone, changes preserved"
+        exit 0
+        ;;
+    "config")
+        echo -e "${BLUE}=== Git Configuration ===${NC}"
+        echo "Global User: $(git config --global user.name) <$(git config --global user.email)>"
+        if git rev-parse --git-dir > /dev/null 2>&1; then
+            echo "Local User: $(git config user.name 2>/dev/null || echo 'Not set') <$(git config user.email 2>/dev/null || echo 'Not set')>"
+            echo "Remote: $(git remote get-url origin 2>/dev/null || echo 'No remote set')"
+            echo "Branch: $(get_current_branch)"
+        fi
+        echo "Default Branch: $(git config --global init.defaultBranch || echo 'master')"
+        [[ -f "$TOKEN_FILE" ]] && echo "GitHub Token: Saved" || echo "GitHub Token: Not saved"
+        echo -e "\n${YELLOW}Edit configuration? (y/N):${NC}"
+        read -r edit_config
+        if [[ "$edit_config" =~ ^[Yy]$ ]]; then
+            setup_wizard
+        fi
+        exit 0
+        ;;
+    "remote")
+        check_git_repo
+        echo "Remote repositories:"
+        git remote -v
+        exit 0
+        ;;
+    "sync")
+        check_git_repo
+        BRANCH=$(get_current_branch)
+        log_info "Syncing with origin/$BRANCH..."
+        git pull origin "$BRANCH" && git push origin "$BRANCH"
+        log_success "Synced with remote"
+        exit 0
+        ;;
+    "save")
+        check_git_repo
+        git add .
+        git stash push -m "${MESSAGE:-Quick save $(date '+%H:%M')}"
+        log_success "Changes saved to stash"
+        exit 0
+        ;;
+    "wip")
+        check_git_repo
+        git add .
+        git commit -m "WIP: ${MESSAGE:-work in progress}"
+        log_success "WIP commit created"
+        exit 0
+        ;;
+    "oops")
+        check_git_repo
+        git reset --soft HEAD~1
+        log_success "Last commit undone (changes kept)"
+        exit 0
+        ;;
+    "squash")
+        check_git_repo
+        if [[ -z "$TARGET" ]]; then
+            echo -n "Number of commits to squash: "
+            read -r TARGET
+        fi
+        if [[ ! "$TARGET" =~ ^[0-9]+$ ]]; then
+            log_error "Please enter a valid number"
+            exit 1
+        fi
+        log_info "Starting interactive rebase for last $TARGET commits..."
+        git rebase -i HEAD~"$TARGET"
+        exit 0
+        ;;
+    "clean")
+        check_git_repo
+        log_warning "This will remove all uncommitted changes!"
+        echo -n "Are you sure? (y/N): "
+        read -r confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            git reset --hard HEAD && git clean -fd
+            log_success "Workspace cleaned"
+        fi
+        exit 0
+        ;;
+    "sync-fork")
+        check_git_repo
+        log_info "Syncing fork with upstream..."
+        git fetch upstream 2>/dev/null || { log_error "No upstream remote found"; exit 1; }
+        git checkout main
+        git merge upstream/main
+        git push origin main
+        log_success "Fork synced with upstream"
+        exit 0
+        ;;
+    "new-feature")
+        check_git_repo
+        if [[ -z "$TARGET" ]]; then
+            echo -n "Feature branch name: "
+            read -r TARGET
+        fi
+        BRANCH="feature/$TARGET"
+        log_info "Creating feature branch: $BRANCH"
+        git checkout -b "$BRANCH"
+        if [[ -n "$MESSAGE" ]]; then
+            git add .
+            git commit -m "$MESSAGE"
+        fi
+        git push -u origin "$BRANCH"
+        log_success "Feature branch $BRANCH created and pushed"
+        exit 0
+        ;;
+    "hotfix")
+        check_git_repo
+        HOTFIX="hotfix/$(date '+%Y%m%d-%H%M')"
+        log_info "Creating hotfix branch: $HOTFIX"
+        git checkout main
+        git pull origin main
+        git checkout -b "$HOTFIX"
+        if [[ -n "$MESSAGE" ]]; then
+            git add .
+            git commit -m "HOTFIX: $MESSAGE"
+            git push -u origin "$HOTFIX"
+        fi
+        log_success "Hotfix branch $HOTFIX ready"
+        exit 0
+        ;;
+    "release")
+        check_git_repo
+        if [[ -z "$TARGET" ]]; then
+            echo -n "Release tag (e.g., v1.0.0): "
+            read -r TARGET
+        fi
+        log_info "Creating release tag: $TARGET"
+        git tag -a "$TARGET" -m "Release $TARGET"
+        git push origin "$TARGET"
+        log_success "Release $TARGET created and pushed"
+        exit 0
+        ;;
+    "ssh")
+        log_info "Setting up SSH key for GitHub..."
+        SSH_KEY="$HOME/.ssh/id_ed25519"
+        if [[ ! -f "$SSH_KEY" ]]; then
+            echo -n "Enter your email for SSH key: "
+            read -r email
+            ssh-keygen -t ed25519 -C "$email" -f "$SSH_KEY" -N ""
+            eval "$(ssh-agent -s)"
+            ssh-add "$SSH_KEY"
+            log_success "SSH key generated"
+        fi
+        echo -e "\n${YELLOW}Copy this public key to GitHub:${NC}"
+        cat "$SSH_KEY.pub"
+        echo -e "\n${BLUE}Go to: https://github.com/settings/ssh/new${NC}"
+        exit 0
+        ;;
+    "clone")
+        if [[ -z "$TARGET" ]]; then
+            echo -n "Enter repository URL: "
+            read -r TARGET
+        fi
+        log_info "Cloning repository..."
+        git clone "$TARGET"
+        REPO_NAME=$(basename "$TARGET" .git)
+        cd "$REPO_NAME" || exit 1
+        log_success "Repository cloned and ready"
+        echo "Current directory: $(pwd)"
+        exit 0
+        ;;
+    "install-man")
+        log_info "Installing man page for comit..."
+        
+        # Create man page content
+        MAN_CONTENT='$(cat << 'EOF'
+.TH COMIT 1 "2024" "Git Shortcut Utility v4.0" "User Commands"
+.SH NAME
+comit \- Git shortcut utility to replace complex Git commands
+.SH SYNOPSIS
+.B comit
+[\fIOPTION\fR] [\fIMESSAGE\fR|\fITARGET\fR]
+.SH DESCRIPTION
+.B comit
+is a professional Git shortcut utility that replaces complex multi-step Git workflows with simple, memorable commands. It provides over 30 Git operations through intuitive options, making Git workflows faster and more efficient for daily development tasks.
+
+.SH SETUP & CONFIGURATION
+.TP
+.B \-\-setup
+Run the first-time setup wizard to configure Git username, email, GitHub token, and default settings.
+.TP
+.B \-\-save\-token
+Save GitHub personal access token securely for future use with repository operations.
+.TP
+.B \-\-config
+Show current Git configuration and optionally edit settings through the setup wizard.
+.TP
+.B \-\-ssh
+Generate SSH key for GitHub authentication and display setup instructions.
+.TP
+.B \-\-clone \fIURL\fR
+Clone repository from URL and set up the local workspace.
+
+.SH QUICK COMMITS
+.TP
+.B comit "\fImessage\fR"
+Equivalent to: git add . && git commit -m "message" && git push
+.TP
+.B \-n, \-\-no\-push "\fImessage\fR"
+Commit changes without pushing to remote repository.
+.TP
+.B \-f, \-\-force "\fImessage\fR"
+Commit and force push changes (use with caution).
+.TP
+.B \-a, \-\-amend "\fImessage\fR"
+Amend the last commit with new message or changes.
+.TP
+.B \-\-fixup \fICOMMIT\fR "\fImessage\fR"
+Create a fixup commit for the specified commit hash.
+
+.SH EXAMPLES
+.TP
+.B Basic commit and push:
+comit "Fix authentication bug"
+.TP
+.B Create feature branch:
+comit -b feature/login "Implement user login"
+.TP
+.B Quick work-in-progress save:
+comit --wip "Working on new feature"
+.TP
+.B Emergency hotfix:
+comit --hotfix "Fix critical security vulnerability"
+
+.SH SEE ALSO
+.BR git (1),
+.BR git-commit (1),
+.BR git-push (1)
+EOF
+)'
+        
+        # Try to install to system location
+        if sudo mkdir -p /usr/local/share/man/man1 2>/dev/null && echo "$MAN_CONTENT" | sudo tee /usr/local/share/man/man1/comit.1 > /dev/null 2>&1; then
+            sudo mandb -q 2>/dev/null || true
+            log_success "Man page installed to /usr/local/share/man/man1/comit.1"
+            echo "You can now use: man comit"
+        else
+            # Fallback to user directory
+            USER_MAN_DIR="$HOME/.local/share/man/man1"
+            mkdir -p "$USER_MAN_DIR"
+            echo "$MAN_CONTENT" > "$USER_MAN_DIR/comit.1"
+            
+            # Add to MANPATH if not already there
+            if ! echo "$MANPATH" | grep -q "$HOME/.local/share/man"; then
+                echo 'export MANPATH="$HOME/.local/share/man:$MANPATH"' >> "$HOME/.bashrc"
+                log_warning "Added MANPATH to ~/.bashrc - restart terminal or run: source ~/.bashrc"
+            fi
+            
+            log_success "Man page installed to $USER_MAN_DIR/comit.1"
+            echo "You can now use: man comit (after restarting terminal)"
+        fi
+        exit 0
+        ;;
+esac
+
+# Handle reset options
+if [[ "$OPTION" == "reset" ]]; then
+    check_git_repo
+    echo -n "Enter reset target (commit/branch): "
+    read -r target
+    if [[ -z "$target" ]]; then
+        log_error "Reset target cannot be empty"
+        exit 1
+    fi
+    log_warning "Resetting to $target..."
+    git reset --hard "$target" && git clean -fd
+    log_success "Reset completed"
+    exit 0
+fi
+
+if [[ "$OPTION" == "hard-reset" ]]; then
+    check_git_repo
+    if [[ -z "$TARGET" ]]; then
+        echo -n "Enter branch or commit to hard reset to: "
+        read -r TARGET
+    fi
+    if [[ -z "$TARGET" ]]; then
+        log_error "Reset target cannot be empty"
+        exit 1
+    fi
+    log_warning "Hard resetting to $TARGET and cleaning workspace..."
+    echo -n "Are you sure? This will lose all local changes! (y/N): "
+    read -r confirm
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        git reset --hard "$TARGET" && git clean -fd
+        log_success "Hard reset to $TARGET completed"
+    else
+        log_info "Operation cancelled"
+    fi
+    exit 0
+fi
+
+# Handle token initialization
+if [[ "$OPTION" == "token" ]]; then
+    # Try to load saved token first
+    SAVED_TOKEN=$(load_token)
+    
+    echo -n "GitHub username: "
+    read -r username
+    echo -n "Repository name: "
+    read -r reponame
+    
+    if [[ -n "$SAVED_TOKEN" ]]; then
+        echo "Using saved GitHub token"
+        token="$SAVED_TOKEN"
+    else
+        echo -n "GitHub token: "
+        read -rs token
+        echo
+        echo -n "Save this token for future use? (y/N): "
+        read -r save_choice
+        if [[ "$save_choice" =~ ^[Yy]$ ]]; then
+            save_token "$token"
+            log_success "Token saved for future use"
+        fi
+    fi
+    
+    if [[ -z "$username" || -z "$reponame" || -z "$token" ]]; then
+        log_error "All fields are required"
+        exit 1
+    fi
+    
+    if [[ -z "$MESSAGE" ]]; then
+        echo -n "Initial commit message: "
+        read -r MESSAGE
+    fi
+    
+    log_info "Initializing repository..."
+    
+    # Check if already a git repo
+    if [[ ! -d ".git" ]]; then
+        git init
+        git branch -M main
+    fi
+    
+    git add .
+    git commit -m "${MESSAGE:-Initial commit}"
+    
+    # Check if remote already exists
+    if git remote get-url origin > /dev/null 2>&1; then
+        log_warning "Remote 'origin' already exists, updating..."
+        git remote set-url origin "https://$token@github.com/$username/$reponame.git"
+    else
+        git remote add origin "https://$token@github.com/$username/$reponame.git"
+    fi
+    
+    git push -u origin main
+    log_success "Repository initialized and pushed to GitHub"
+    log_info "Repository URL: https://github.com/$username/$reponame"
+    exit 0
+fi
+
+# Get commit message if not provided
+if [[ -z "$MESSAGE" ]]; then
+    echo -n "Commit message: "
+    read -r MESSAGE
+fi
+
+if [[ -z "$MESSAGE" ]]; then
+    log_error "Commit message cannot be empty"
+    exit 1
+fi
+
+# Check if we're in a git repository
+check_git_repo
+
+# Check if there are changes to commit
+if git diff --quiet && git diff --cached --quiet; then
+    log_warning "No changes to commit"
+    exit 0
+fi
+
+BRANCH=$(get_current_branch)
+log_info "Committing changes to branch: $BRANCH"
+
+# Stage and commit
+git add .
+git commit -m "$MESSAGE"
+log_success "Changes committed: $MESSAGE"
+
+# Handle commit options
+case "$OPTION" in
+    "amend")
+        if [[ -n "$MESSAGE" ]]; then
+            git commit --amend -m "$MESSAGE"
+        else
+            git commit --amend
+        fi
+        log_success "Commit amended"
+        echo -n "Force push amended commit? (y/N): "
+        read -r confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            git push -f origin "$BRANCH"
+            log_success "Amended commit force pushed"
+        fi
+        ;;
+    "fixup")
+        if [[ -z "$TARGET" ]]; then
+            log_error "Fixup target commit required"
+            exit 1
+        fi
+        git add .
+        git commit --fixup="$TARGET" -m "${MESSAGE:-fixup}"
+        log_success "Fixup commit created for $TARGET"
+        ;;
+    "no-push")
+        log_info "Skipping push (--no-push flag used)"
+        ;;
+    "force")
+        log_warning "Force pushing to origin/$BRANCH..."
+        echo -n "Are you sure? (y/N): "
+        read -r confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            git push -f origin "$BRANCH"
+            log_success "Force pushed to origin/$BRANCH"
+        else
+            log_info "Push cancelled"
+        fi
+        ;;
+    *)
+        log_info "Pushing to origin/$BRANCH..."
+        if git push origin "$BRANCH"; then
+            log_success "Successfully pushed to origin/$BRANCH"
+        else
+            log_error "Failed to push. You may need to pull first."
+            exit 1
+        fi
+        ;;
+esac
