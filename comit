@@ -896,6 +896,17 @@ check_git_repo
 # Check if there are changes to commit
 if git diff --quiet && git diff --cached --quiet; then
     log_warning "No changes to commit"
+    # Still allow push if there are unpushed commits
+    BRANCH=$(get_current_branch)
+    if git log origin/$BRANCH..HEAD --oneline 2>/dev/null | grep -q .; then
+        log_info "Found unpushed commits, pushing to origin/$BRANCH..."
+        if git push origin "$BRANCH"; then
+            log_success "Successfully pushed to origin/$BRANCH"
+        else
+            log_error "Failed to push"
+            exit 1
+        fi
+    fi
     exit 0
 fi
 
