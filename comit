@@ -1177,21 +1177,64 @@ fi
 # Check if we're in a git repository
 check_git_repo
 
-# Check if there are changes to commit
+# Smart algorithm: Check if there are changes to commit
 if git diff --quiet && git diff --cached --quiet; then
     log_warning "No changes to commit"
-    # Still allow push if there are unpushed commits
+    
     BRANCH=$(get_current_branch)
+    
+    # Check if there are unpushed commits on current branch
     if git log origin/$BRANCH..HEAD --oneline 2>/dev/null | grep -q .; then
-        log_info "Found unpushed commits, pushing to origin/$BRANCH..."
+        log_info "Found unpushed commits on $BRANCH, pushing..."
         if git push origin "$BRANCH"; then
-            log_success "Successfully pushed to origin/$BRANCH"
+            log_success "Successfully pushed unpushed commits to origin/$BRANCH"
         else
-            log_error "Failed to push"
+            log_error "Failed to push to $BRANCH"
             exit 1
+        fi
+        exit 0
+    fi
+    
+    # If current branch is not main and no changes, offer to switch and push to main
+    if [[ "$BRANCH" != "main" ]]; then
+        log_info "Current branch: $BRANCH (no changes to commit)"
+        echo -n "Switch to main and push? (Y/n): "
+        read -r switch_to_main
+        if [[ "$switch_to_main" =~ ^[Nn]$ ]]; then
+            log_info "Staying on $BRANCH"
+            exit 0
+        fi
+        
+        log_info "Switching to main branch..."
+        git checkout main
+        BRANCH="main"
+    fi
+    
+    # Check if main has unpushed commits
+    if git log origin/main..HEAD --oneline 2>/dev/null | grep -q .; then
+        log_info "Found unpushed commits on main, pushing..."
+        if git push origin main; then
+            log_success "Successfully pushed to origin/main"
+        else
+            log_error "Failed to push to main"
+            exit 1
+        fi
+    else
+        # Try to pull latest changes from main and then push
+        log_info "No unpushed commits found. Checking for remote updates..."
+        if git pull origin main --quiet 2>/dev/null; then
+            log_info "Pulled latest changes from origin/main"
+            if git push origin main 2>/dev/null; then
+                log_success "Successfully synced with origin/main"
+            else
+                log_info "Already up to date with origin/main"
+            fi
+        else
+            log_info "Already up to date with origin/main"
         fi
     fi
     exit 0
+fi
 fi
 
 BRANCH=$(get_current_branch)
