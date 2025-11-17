@@ -130,7 +130,7 @@ show_help() {
     echo -e "${YELLOW}═══ BASIC COMMITS ═══${NC}"
     echo '  comit "message"     Standard workflow: git add . && git commit -m "message" && git push'
     echo '  -n, --no-push "msg" Commit without pushing: git add . && git commit -m "msg"'
-    echo '  -f, --force "msg"   Force push commit: git add . && git commit -m "msg" && git push -f'
+    echo '  -f, --force "msg"   Force push commit with safety checks and options for diverged branches'
     echo '  -a, --amend "msg"   Amend last commit: git commit --amend -m "msg"'
     echo '  --fixup HASH "msg"  Create fixup commit: git commit --fixup=HASH -m "msg"'
     echo -e '  --wip "msg"         Work-in-progress: git add . && git commit -m "WIP: msg"\n'
@@ -144,7 +144,7 @@ show_help() {
     
     echo -e "${YELLOW}═══ WORKFLOW SHORTCUTS ═══${NC}"
     echo "  -p, --pull          Pull latest changes: git pull origin current-branch"
-    echo "  --sync              Sync with remote: git pull && git push"
+    echo "  --sync              Sync with remote: git pull && git push (handles conflicts)"
     echo '  --stash "msg"       Stash changes: git stash push -m "msg"'
     echo "  --unstash           Apply latest stash: git stash pop"
     echo '  --save "msg"        Quick save to stash: git add . && git stash push -m "msg"'
@@ -180,11 +180,11 @@ show_help() {
     echo -e "    comit --config                          # View/edit configuration\n"
     
     echo -e "  ${GREEN}Daily Workflow:${NC}"
-    echo '    comit "Fix authentication bug"          # Standard: add, commit, push'
+    echo '    comit "Fix authentication bug"          # Smart push: handles all edge cases'
     echo '    comit -n "Work in progress"             # Commit without pushing'
     echo '    comit --wip "Testing new feature"       # Quick WIP commit'
     echo "    comit -p                                # Pull latest changes"
-    echo -e "    comit --sync                            # Sync with remote\n"
+    echo -e "    comit --sync                            # Sync with conflict resolution\n"
     
     echo -e "  ${GREEN}Branch Management:${NC}"
     echo '    comit -b feature/login "Start login"    # Create branch and commit'
@@ -210,7 +210,8 @@ show_help() {
     echo -e "${YELLOW}═══ NOTES ═══${NC}"
     echo "• All commands work from any subdirectory within a Git repository"
     echo "• Use quotes around commit messages containing spaces or special characters"
-    echo "• Force operations (--force, --hard-reset) require confirmation for safety"
+    echo "• Smart push logic handles: no remote, new branches, diverged branches, conflicts"
+    echo "• Force operations require confirmation and offer multiple resolution options"
     echo "• Setup wizard (--setup) configures Git globally for optimal comit usage"
     echo "• GitHub token enables private repository operations and enhanced features"
     echo "• Man page available after running: comit --install-man"
@@ -1177,73 +1178,122 @@ fi
 # Check if we're in a git repository
 check_git_repo
 
-# Smart algorithm: Check if there are changes to commit
-if git diff --quiet && git diff --cached --quiet; then
-    log_warning "No changes to commit"
+# Simple push function for basic workflow
+simple_push() {
+    local branch="$1"
     
-    BRANCH=$(get_current_branch)
-    
-    # Check if there are unpushed commits on current branch
-    if git log origin/$BRANCH..HEAD --oneline 2>/dev/null | grep -q .; then
-        log_info "Found unpushed commits on $BRANCH, pushing..."
-        if git push origin "$BRANCH"; then
-            log_success "Successfully pushed unpushed commits to origin/$BRANCH"
-        else
-            log_error "Failed to push to $BRANCH"
-            exit 1
-        fi
-        exit 0
-    fi
-    
-    # If current branch is not main and no changes, offer to switch and push to main
-    if [[ "$BRANCH" != "main" ]]; then
-        log_info "Current branch: $BRANCH (no changes to commit)"
-        echo -n "Switch to main and push? (Y/n): "
-        read -r switch_to_main
-        if [[ "$switch_to_main" =~ ^[Nn]$ ]]; then
-            log_info "Staying on $BRANCH"
-            exit 0
-        fi
-        
-        log_info "Switching to main branch..."
-        git checkout main
-        BRANCH="main"
-    fi
-    
-    # Check if main has unpushed commits
-    if git log origin/main..HEAD --oneline 2>/dev/null | grep -q .; then
-        log_info "Found unpushed commits on main, pushing..."
-        if git push origin main; then
-            log_success "Successfully pushed to origin/main"
-        else
-            log_error "Failed to push to main"
-            exit 1
-        fi
+    log_info "Pushing to origin/$branch..."
+    if git push origin "$branch" 2>/dev/null; then
+        log_success "Successfully pushed to origin/$branch"
     else
-        # Try to pull latest changes from main and then push
-        log_info "No unpushed commits found. Checking for remote updates..."
-        if git pull origin main --quiet 2>/dev/null; then
-            log_info "Pulled latest changes from origin/main"
-            if git push origin main 2>/dev/null; then
-                log_success "Successfully synced with origin/main"
+        # Try setting upstream for new branch
+        if git push -u origin "$branch"; then
+            log_success "Branch '$branch' pushed and upstream set"
+        else
+            log_error "Failed to push to origin/$branch"
+            exit 1
+        fi
+    fi
+}
+
+# Smart push function with comprehensive error handling (for --force flag)
+smart_push() {
+    local branch="$1"
+    local force_flag="$2"
+    
+    # Check if remote exists
+    if ! git remote get-url origin >/dev/null 2>&1; then
+        log_error "No remote 'origin' configured. Add remote first: git remote add origin <url>"
+        return 1
+    fi
+    
+    # Check if remote branch exists
+    if ! git ls-remote --heads origin "$branch" | grep -q "refs/heads/$branch"; then
+        log_info "Remote branch '$branch' doesn't exist. Setting upstream..."
+        if git push -u origin "$branch"; then
+            log_success "Branch '$branch' pushed and upstream set"
+            return 0
+        else
+            log_error "Failed to push new branch '$branch'"
+            return 1
+        fi
+    fi
+    
+    # Check if branches have diverged
+    local ahead behind
+    ahead=$(git rev-list --count origin/"$branch"..HEAD 2>/dev/null || echo "0")
+    behind=$(git rev-list --count HEAD..origin/"$branch" 2>/dev/null || echo "0")
+    
+    if [[ "$behind" -gt 0 && "$ahead" -gt 0 ]]; then
+        log_warning "Branch '$branch' has diverged from remote (ahead $ahead, behind $behind)"
+        if [[ "$force_flag" == "--force" ]]; then
+            echo -n "Force push and overwrite remote? (y/N): "
+            read -r confirm
+            if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                git push -f origin "$branch"
+                log_success "Force pushed to origin/$branch"
+                return 0
             else
-                log_info "Already up to date with origin/main"
+                log_info "Push cancelled"
+                return 1
             fi
         else
-            log_info "Already up to date with origin/main"
+            echo "Options:"
+            echo "  1) Pull and merge (git pull)"
+            echo "  2) Pull and rebase (git pull --rebase)"
+            echo "  3) Force push (dangerous)"
+            echo "  4) Cancel"
+            echo -n "Choose option (1-4): "
+            read -r choice
+            case "$choice" in
+                1)
+                    git pull origin "$branch" && git push origin "$branch"
+                    ;;
+                2)
+                    git pull --rebase origin "$branch" && git push origin "$branch"
+                    ;;
+                3)
+                    echo -n "Are you sure? This will overwrite remote history! (y/N): "
+                    read -r confirm
+                    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                        git push -f origin "$branch"
+                    fi
+                    ;;
+                *)
+                    log_info "Push cancelled"
+                    return 1
+                    ;;
+            esac
         fi
+    elif [[ "$behind" -gt 0 ]]; then
+        log_info "Remote has $behind new commits. Pulling first..."
+        if git pull origin "$branch"; then
+            git push origin "$branch"
+            log_success "Pulled and pushed to origin/$branch"
+        else
+            log_error "Failed to pull from origin/$branch"
+            return 1
+        fi
+    elif [[ "$ahead" -gt 0 ]]; then
+        log_info "Pushing $ahead commits to origin/$branch..."
+        if [[ "$force_flag" == "--force" ]]; then
+            git push -f origin "$branch"
+            log_success "Force pushed to origin/$branch"
+        else
+            git push origin "$branch"
+            log_success "Successfully pushed to origin/$branch"
+        fi
+    else
+        log_info "Already up to date with origin/$branch"
     fi
-    exit 0
-fi
-fi
+}
 
 BRANCH=$(get_current_branch)
-log_info "Committing changes to branch: $BRANCH"
 
-# Stage and commit
+# Always run git commands and show output
 git add .
 git commit -m "$MESSAGE"
-log_success "Changes committed: $MESSAGE"
+git push origin "$BRANCH"
 
 # Handle commit options
 case "$OPTION" in
@@ -1271,26 +1321,12 @@ case "$OPTION" in
         log_success "Fixup commit created for $TARGET"
         ;;
     "no-push")
-        log_info "Skipping push (--no-push flag used)"
+        # Skip push for --no-push flag
         ;;
     "force")
-        log_warning "Force pushing to origin/$BRANCH..."
-        echo -n "Are you sure? (y/N): "
-        read -r confirm
-        if [[ "$confirm" =~ ^[Yy]$ ]]; then
-            git push -f origin "$BRANCH"
-            log_success "Force pushed to origin/$BRANCH"
-        else
-            log_info "Push cancelled"
-        fi
+        git push -f origin "$BRANCH"
         ;;
     *)
-        log_info "Pushing to origin/$BRANCH..."
-        if git push origin "$BRANCH"; then
-            log_success "Successfully pushed to origin/$BRANCH"
-        else
-            log_error "Failed to push. You may need to pull first."
-            exit 1
-        fi
+        # Default case already handled above
         ;;
 esac
